@@ -2,12 +2,20 @@ const ytdl = require("ytdl-core");
 
 const utils = require("./utils");
 
+const constants = {
+    YOUTUBE_VIDEO_PREFIX: "https://www.youtube.com/watch?v=",
+    YOUTUBE_PLAYLIST_PREFIX: "https://www.youtube.com/playlist?list=",
+    SPOTIFY_TRACK_PREFIX: "https://open.spotify.com/track/",
+    SPOTIFY_ALBUM_PREFIX: "https://open.spotify.com/album/",
+    SPOTIFY_PLAYLIST_PREFIX: "https://open.spotify.com/playlist/",
+};
+
 async function findAndExecuteCommands(message, servers) {
     const command = utils.splitCommand(message.content)[0];
 
     switch(command.toLowerCase()) {
     case "play":
-        onPlay(message);
+        onPlay(message, servers);
         break;
 
     case "volume":
@@ -31,8 +39,10 @@ async function findAndExecuteCommands(message, servers) {
     }
 }
 
-async function onPlay(message, voiceState) { 
+async function onPlay(message, servers) { 
     const tokens = utils.splitCommand(message.content);    
+
+    const server = servers[message.guild.id];
 
     if (message.member.voice.channel) {
         if (tokens.length !== 2) {
@@ -40,12 +50,15 @@ async function onPlay(message, voiceState) {
             return;
         }
 
-        if (tokens[1].startsWith("https://www.youtube.com/watch?v=")) {
-            const connection = await message.member.voice.channel.join();
-            voiceState.dispatcher = connection.play(ytdl(tokens[1], {filter: "audioonly"}), {volume: 0.5,})
+        const connection = await message.member.voice.channel.join();
+
+        if (tokens[1].startsWith(constants.YOUTUBE_VIDEO_PREFIX)) {
+            server.dispatcher = connection.play(ytdl(tokens[1], {filter: "audioonly"}), {volume: 0.5,})
                 .on("error", () => {
                     message.channel.send("EPIC FAIL: error playing that song");
                 });
+        } else if (tokens[1].startsWith()) {
+
         } else {
             message.channel.send("EPIC FAIL: provide a full and correct YouTube URL");
         }
