@@ -45,11 +45,6 @@ async function findAndExecuteCommands(message, servers) {
 }
 
 async function onPlay(message, server) {
-    function getYTSearchResults(queryStr) {
-        const url = await ytsr(queryStr, { limit: 1 });
-        return url;
-    }
-
     function addToQueue(item) {
         if (Array.isArray(item)) {
             server.queue.concat(item);
@@ -60,9 +55,9 @@ async function onPlay(message, server) {
         }
     }
 
-    async function playQueue() {
+    async function playQueue(connection) {
         server.dispatcher = connection.play(ytdl(server.queue[0], {filter: "audioonly"}), {volume: 0.7})
-                .on("error", () => message.channel.send("EPIC FAIL: error playing that song"));
+            .on("error", () => message.channel.send("Error playing song!"));
         
         server.dispatcher.on("finish", () => {
             server.queue.shift();
@@ -70,44 +65,50 @@ async function onPlay(message, server) {
             if (server.queue[0]) {
                 setTimeout(() => playQueue(message, server), 3000);
             }
-        })
+        });
     }
 
     const tokens = utils.splitCommand(message.content);
 
     if (message.member.voice.channel) {
         if (tokens.length !== 2) {
-            message.channel.send("EPIC FAIL: provide a full and correct YouTube URL");
+            message.channel.send("FAIL: provide a full and correct YouTube URL");
             return;
         }
 
         const connection = await message.member.voice.channel.join();
 
         if (tokens[1].startsWith(constants.YOUTUBE_VIDEO_PREFIX)) {
+            // eslint-disable-next-line no-useless-escape
             if (tokens[1].match("/(youtube.com|youtu.be)\/(watch)?(\?v=)?(\S+)?/")) {
                 addToQueue(tokens[1]);
-                playQueue();
+                playQueue(connection);
             }
         } else if (tokens[1].startsWith(constants.YOUTUBE_PLAYLIST_PREFIX)) {
-            const playlist = await ytpl(tokens[1], { pages: 1 });
-            server.queue = utils.getURLsFromYTPlaylist(playlist);
+            let playlistId;
+            try {
+                playlistId = await ytpl.getPlaylistID(tokens[1]);
+            } catch (e) {
+                message.channel.send("Invalid Playlist URL.");
+                return;
+            }
+            const playlist = await ytpl(playlistId, { pages: 1 });
+            console.log("queueing", utils.getURLsFromYTPlaylist(playlist));
+            server.queue.concat(utils.getURLsFromYTPlaylist(playlist));
 
-            server.dispatcher = connection.play(ytdl(server.queue[0], {filter: "audioonly"}), {volume: 0.7})
-                .on("error", () => message.channel.send("EPIC FAIL: error playing that song"));
-            
-            server.dispatcher.on("finish", () => {
-                server.queue.shift();
-                //INFINTE RECURSION HAPPENING HERE
-                
-                while (server.queue[0]) {
-                    setTimeout(() => onPlay(message, server), 3000);
-                }
-            });
+            playQueue(connection);
+        } else if (tokens.length > 1) {
+            const queryStr = tokens.slice(1).join(" ");
+
+            const videoUrl = await ytsr(queryStr, { limit: 1 });
+            console.log("Playing: ", videoUrl);
+            addToQueue(videoUrl);
+            playQueue(connection);
         } else {
-            message.channel.send("EPIC FAIL: provide a full and correct YouTube URL");
+            message.channel.send("FAIL: provide a full and correct YouTube URL");
         }
     } else {
-        message.channel.send("join a voice channel first dumbass");
+        message.channel.send("Join a voice channel first!");
     }
 }
 
@@ -120,10 +121,10 @@ async function onVolume(message, server) {
 
     const volume = Number(tokens[1]);
     if (!isNaN(Number(volume) && Number.isInteger(volume))) {
-        if (server.dispatcher !== null) {
+        if (server.dispatcher) {
             server.dispatcher.setVolume(volume / 100);
         } else {
-            message.channel.send("EPIC FAIL: there's nothing playing");
+            message.channel.send("FAIL: there's nothing playing");
         }
     }
 }
@@ -132,7 +133,7 @@ async function onPause(message, server) {
     if (!server.dispatcher.paused) {
         server.dispatcher.pause();
     } else {
-        message.channel.send("EPIC FAIL: there's nothing playing");
+        message.channel.send("FAIL: there's nothing playing");
     }
 }
 
@@ -141,7 +142,7 @@ async function onResume(message, server) {
     if (server.dispatcher.paused) {
         server.dispatcher.resume();
     } else {
-        message.channel.send("EPIC FAIL: there's nothing playing");
+        message.channel.send("FAIL: there's nothing playing");
     }
 }
 
