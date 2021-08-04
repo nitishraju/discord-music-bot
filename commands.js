@@ -1,4 +1,6 @@
 const ytdl = require("ytdl-core");
+const ytpl = require("ytpl");
+const ytsr = require("ytsr");
 
 const utils = require("./utils");
 
@@ -11,27 +13,30 @@ const constants = {
 };
 
 async function findAndExecuteCommands(message, servers) {
-    const command = utils.splitCommand(message.content)[0];
+    servers[message.guild.id] = servers[message.guild.id] ?? {};
+    const server = servers[message.guild.id];
 
+    const command = utils.splitCommand(message.content)[0];
     switch(command.toLowerCase()) {
     case "play":
-        onPlay(message, servers);
+        onPlay(message, server);
         break;
 
+    case "vol":
     case "volume":
-        onVolume();
+        onVolume(message, server);
         break;
     
     case "pause":
-        onPause();
+        onPause(message, server);
         break;
     
     case "resume":
-        onResume();
+        onResume(message, server);
         break;
     
     case "stop":
-        onStop();
+        onStop(message, server);
         break;
     
     default:
@@ -39,10 +44,36 @@ async function findAndExecuteCommands(message, servers) {
     }
 }
 
-async function onPlay(message, servers) { 
-    const tokens = utils.splitCommand(message.content);    
+async function onPlay(message, server) {
+    function getYTSearchResults(queryStr) {
+        const url = await ytsr(queryStr, { limit: 1 });
+        return url;
+    }
 
-    const server = servers[message.guild.id];
+    function addToQueue(item) {
+        if (Array.isArray(item)) {
+            server.queue.concat(item);
+        }
+
+        if (typeof item === "string") {
+            server.queue.push(item);
+        }
+    }
+
+    async function playQueue() {
+        server.dispatcher = connection.play(ytdl(server.queue[0], {filter: "audioonly"}), {volume: 0.7})
+                .on("error", () => message.channel.send("EPIC FAIL: error playing that song"));
+        
+        server.dispatcher.on("finish", () => {
+            server.queue.shift();
+
+            if (server.queue[0]) {
+                setTimeout(() => playQueue(message, server), 3000);
+            }
+        })
+    }
+
+    const tokens = utils.splitCommand(message.content);
 
     if (message.member.voice.channel) {
         if (tokens.length !== 2) {
@@ -53,12 +84,25 @@ async function onPlay(message, servers) {
         const connection = await message.member.voice.channel.join();
 
         if (tokens[1].startsWith(constants.YOUTUBE_VIDEO_PREFIX)) {
-            server.dispatcher = connection.play(ytdl(tokens[1], {filter: "audioonly"}), {volume: 0.5,})
-                .on("error", () => {
-                    message.channel.send("EPIC FAIL: error playing that song");
-                });
-        } else if (tokens[1].startsWith()) {
+            if (tokens[1].match("/(youtube.com|youtu.be)\/(watch)?(\?v=)?(\S+)?/")) {
+                addToQueue(tokens[1]);
+                playQueue();
+            }
+        } else if (tokens[1].startsWith(constants.YOUTUBE_PLAYLIST_PREFIX)) {
+            const playlist = await ytpl(tokens[1], { pages: 1 });
+            server.queue = utils.getURLsFromYTPlaylist(playlist);
 
+            server.dispatcher = connection.play(ytdl(server.queue[0], {filter: "audioonly"}), {volume: 0.7})
+                .on("error", () => message.channel.send("EPIC FAIL: error playing that song"));
+            
+            server.dispatcher.on("finish", () => {
+                server.queue.shift();
+                //INFINTE RECURSION HAPPENING HERE
+                
+                while (server.queue[0]) {
+                    setTimeout(() => onPlay(message, server), 3000);
+                }
+            });
         } else {
             message.channel.send("EPIC FAIL: provide a full and correct YouTube URL");
         }
@@ -67,7 +111,7 @@ async function onPlay(message, servers) {
     }
 }
 
-async function onVolume(message, voiceState) {
+async function onVolume(message, server) {
     const tokens = message.content.split(" ");
     if (tokens.length !== 2) {
         message.channel.send("enter a volume between 0 and 150 after the command (e.g. !volume 50)");
@@ -76,34 +120,34 @@ async function onVolume(message, voiceState) {
 
     const volume = Number(tokens[1]);
     if (!isNaN(Number(volume) && Number.isInteger(volume))) {
-        if (voiceState.dispatcher !== null) {
-            voiceState.dispatcher.setVolume(volume / 100);
+        if (server.dispatcher !== null) {
+            server.dispatcher.setVolume(volume / 100);
         } else {
             message.channel.send("EPIC FAIL: there's nothing playing");
         }
     }
 }
 
-async function onPause(message, voiceState) {
-    if (!voiceState.dispatcher.paused) {
-        voiceState.dispatcher.pause();
+async function onPause(message, server) {
+    if (!server.dispatcher.paused) {
+        server.dispatcher.pause();
     } else {
         message.channel.send("EPIC FAIL: there's nothing playing");
     }
 }
 
-async function onResume(message, voiceState) {
+async function onResume(message, server) {
     message.channel.send("resuming");
-    if (voiceState.dispatcher.paused) {
-        voiceState.dispatcher.resume();
+    if (server.dispatcher.paused) {
+        server.dispatcher.resume();
     } else {
         message.channel.send("EPIC FAIL: there's nothing playing");
     }
 }
 
-async function onStop(message, voiceState) {
-    if (voiceState.dispatcher !== null) {
-        voiceState.dispatcher.destroy();
+async function onStop(message, server) {
+    if (server.dispatcher) {
+        server.dispatcher.destroy();
         message.member.voice.channel.leave();
     }
 }
