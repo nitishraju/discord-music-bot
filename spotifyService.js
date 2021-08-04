@@ -8,7 +8,6 @@ const {
 let accessToken;
 
 const base64Creds = 
-    // eslint-disable-next-line no-undef
     Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
 
 const axiosOptions = {

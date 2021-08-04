@@ -13,7 +13,9 @@ const constants = {
 };
 
 async function findAndExecuteCommands(message, servers) {
-    servers[message.guild.id] = servers[message.guild.id] ?? {};
+    if (!servers[message.guild.id]) {
+        servers[message.guild.id] = { queue: [] };
+    }
     const server = servers[message.guild.id];
 
     const command = utils.splitCommand(message.content)[0];
@@ -63,7 +65,7 @@ async function onPlay(message, server) {
             server.queue.shift();
 
             if (server.queue[0]) {
-                setTimeout(() => playQueue(message, server), 3000);
+                setTimeout(() => playQueue(connection), 3000);
             }
         });
     }
@@ -71,19 +73,18 @@ async function onPlay(message, server) {
     const tokens = utils.splitCommand(message.content);
 
     if (message.member.voice.channel) {
-        if (tokens.length !== 2) {
-            message.channel.send("FAIL: provide a full and correct YouTube URL");
-            return;
-        }
-
         const connection = await message.member.voice.channel.join();
 
         if (tokens[1].startsWith(constants.YOUTUBE_VIDEO_PREFIX)) {
-            // eslint-disable-next-line no-useless-escape
-            if (tokens[1].match("/(youtube.com|youtu.be)\/(watch)?(\?v=)?(\S+)?/")) {
-                addToQueue(tokens[1]);
-                playQueue(connection);
+            let videoId;
+            try {
+                videoId = ytdl.getURLVideoID(tokens[1]);
+            } catch (e) {
+                message.channel.send("Invalid video URL.");
             }
+
+            addToQueue(videoId);
+            playQueue(connection);
         } else if (tokens[1].startsWith(constants.YOUTUBE_PLAYLIST_PREFIX)) {
             let playlistId;
             try {
@@ -93,18 +94,22 @@ async function onPlay(message, server) {
                 return;
             }
             const playlist = await ytpl(playlistId, { pages: 1 });
-            console.log("queueing", utils.getURLsFromYTPlaylist(playlist));
-            server.queue.concat(utils.getURLsFromYTPlaylist(playlist));
+            server.queue = [...server.queue, ...utils.getURLsFromYTPlaylist(playlist)];
 
             playQueue(connection);
         } else if (tokens.length > 1) {
             const queryStr = tokens.slice(1).join(" ");
 
-            const videoUrl = await ytsr(queryStr, { limit: 1 });
-            console.log("Playing: ", videoUrl);
-            addToQueue(videoUrl);
+            const searchObj = await ytsr(queryStr, { limit: 10 });
+            const results = searchObj.items;
+            while (results[0].type !== "video") {
+                results.shift();
+            }
+
+            addToQueue(results[0].url);
             playQueue(connection);
         } else {
+            console.log(tokens.length);
             message.channel.send("FAIL: provide a full and correct YouTube URL");
         }
     } else {
@@ -150,6 +155,7 @@ async function onStop(message, server) {
     if (server.dispatcher) {
         server.dispatcher.destroy();
         message.member.voice.channel.leave();
+        server.queue = [];
     }
 }
 
