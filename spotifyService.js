@@ -19,25 +19,41 @@ function retrieveSpotifyToken(servers) {
             grant_type: "client_credentials",
         },
     };
-    axios(axiosOptions)
+    return axios(axiosOptions)
         .then(res => {
             servers.accessToken = res.data["access_token"];
-        })
-        .then(() => {
-            console.log(servers.accessToken);
-            // const axiosOptions = {
-            //     url: "https://api.spotify.com/v1/playlists/7zx6dQKciDbBuO501S4gdE/tracks",
-            //     method: "GET",
-            //     headers: {
-            //         "Authorization": "Bearer " + servers.accessToken
-            //     }
-            // };
             setTimeout(() => retrieveSpotifyToken(servers), 3500 * 1000);
         })
         .catch(err => console.log(err.stack));
-        
+}
+
+function getTrackNamesFromSpotifyPlaylist(playlistUrl, token) {
+    const playlistId = playlistUrl.split("/")[4].split("?")[0];
+
+    const axiosOptions = {
+        url: `https://api.spotify.com/v1/playlists/${playlistId}/tracks`,
+        method: "GET",
+        headers: {
+            "Authorization": "Bearer " + token
+        }
+    };
+    return axios(axiosOptions)
+        .then(res => {
+            const trackNames = [];
+            res.data.items.forEach(trackObj => {
+                const trackName = trackObj.track.name;
+                const primaryArtist = trackObj.track.artists[0].name;
+                trackNames.push(`${primaryArtist} - ${trackName}`);
+            });
+            return trackNames;
+        })
+        .catch(err => {
+            console.log(err.stack);
+            return [];
+        });
 }
 
 module.exports = {
     retrieveSpotifyToken,
+    getTrackNamesFromSpotifyPlaylist,
 };

@@ -8,8 +8,12 @@ const spotify = require("./spotifyService");
 client.login(config["discord_token"]);
 
 const servers = {};
-spotify.retrieveSpotifyToken(servers);
-console.log("Spotify token set.");
+spotify.retrieveSpotifyToken(servers)
+    .then(() => {
+        console.log("Spotify token set.");
+        // spotify.getTrackNamesFromSpotifyPlaylist("https://open.spotify.com/playlist/7whao0mclC4HJl8FaeywyJ", servers.accessToken);
+    });
+
 
 client.once("ready", () => {
     console.log(`Logged in as: ${client.user.tag}`);

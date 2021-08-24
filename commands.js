@@ -1,8 +1,9 @@
 const ytdl = require("ytdl-core");
 const ytpl = require("ytpl");
-const ytsr = require("ytsr");
+
 
 const utils = require("./utils");
+const spotify = require("./spotifyService");
 
 const constants = {
     YOUTUBE_VIDEO_PREFIX: "https://www.youtube.com/watch?v=",
@@ -21,7 +22,7 @@ async function findAndExecuteCommands(message, servers) {
     const command = utils.splitCommand(message.content)[0];
     switch(command.toLowerCase()) {
     case "play":
-        onPlay(message, server);
+        onPlay(message, server, servers.accessToken);
         break;
 
     case "vol":
@@ -41,15 +42,19 @@ async function findAndExecuteCommands(message, servers) {
         onStop(message, server);
         break;
     
+    case "skip":
+        onSkip(message, server);
+        break;
+    
     default:
         break;
     }
 }
 
-async function onPlay(message, server) {
+async function onPlay(message, server, spotifyToken) {
     function addToQueue(item) {
         if (Array.isArray(item)) {
-            server.queue.concat(item);
+            server.queue = [...server.queue, ...item];
         }
 
         if (typeof item === "string") {
@@ -97,19 +102,25 @@ async function onPlay(message, server) {
             server.queue = [...server.queue, ...utils.getURLsFromYTPlaylist(playlist)];
 
             playQueue(connection);
+        } else if (tokens[1].startsWith(constants.SPOTIFY_PLAYLIST_PREFIX)) {
+            const tracks = await spotify.getTrackNamesFromSpotifyPlaylist(tokens[1], spotifyToken);
+
+            const results = [];
+            for await (let trackName of tracks) {
+                let url = await utils.getYTUrlFromQuery(trackName);
+                results.push(url);
+            }
+            console.log("results", results);
+            addToQueue(results);
+            playQueue(connection);
         } else if (tokens.length > 1) {
             const queryStr = tokens.slice(1).join(" ");
 
-            const searchObj = await ytsr(queryStr, { limit: 10 });
-            const results = searchObj.items;
-            while (results[0].type !== "video") {
-                results.shift();
-            }
+            const result = await utils.getYTUrlFromQuery(queryStr);
 
-            addToQueue(results[0].url);
+            addToQueue(result);
             playQueue(connection);
         } else {
-            console.log(tokens.length);
             message.channel.send("FAIL: provide a full and correct YouTube URL");
         }
     } else {
@@ -159,11 +170,12 @@ async function onStop(message, server) {
     }
 }
 
+async function onSkip(message, server) {
+    if (server.dispatcher) {
+        server.dispatcher.destroy();
+    }
+}
+
 module.exports = { 
-    findAndExecuteCommands, 
-    onPlay, 
-    onVolume, 
-    onPause,
-    onResume,
-    onStop,
+    findAndExecuteCommands,
 };
