@@ -51,34 +51,41 @@ async function findAndExecuteCommands(message, servers) {
     }
 }
 
-async function onPlay(message, server, spotifyToken) {
-    function addToQueue(item) {
-        if (Array.isArray(item)) {
-            server.queue = [...server.queue, ...item];
-        }
-
-        if (typeof item === "string") {
-            server.queue.push(item);
-        }
+function addToQueue(item, server) {
+    if (Array.isArray(item)) {
+        server.queue = [...server.queue, ...item];
     }
 
-    async function playQueue(connection) {
-        server.dispatcher = connection.play(ytdl(server.queue[0], {filter: "audioonly"}), {volume: 0.7})
+    if (typeof item === "string") {
+        server.queue.push(item);
+    }
+}
+
+async function playQueue(message, server) {
+    if (!server.queue[0] || !server.connection) {
+        return;
+    }
+
+    if (!server.dispatcher || server.dispatcher.paused) {
+        server.dispatcher = server.connection.play(ytdl(server.queue[0], {filter: "audioonly"}), {volume: 0.7})
             .on("error", () => message.channel.send("Error playing song!"));
         
         server.dispatcher.on("finish", () => {
             server.queue.shift();
 
             if (server.queue[0]) {
-                setTimeout(() => playQueue(connection), 3000);
+                setTimeout(() => playQueue(server.connection), 3000);
             }
-        });
+        });  
     }
+}
 
+async function onPlay(message, server, spotifyToken) {
     const tokens = utils.splitCommand(message.content);
 
     if (message.member.voice.channel) {
         const connection = await message.member.voice.channel.join();
+        server.connection = connection;
 
         if (tokens[1].startsWith(constants.YOUTUBE_VIDEO_PREFIX)) {
             let videoId;
@@ -88,8 +95,8 @@ async function onPlay(message, server, spotifyToken) {
                 message.channel.send("Invalid video URL.");
             }
 
-            addToQueue(videoId);
-            playQueue(connection);
+            addToQueue(videoId, server);
+            playQueue(message, server);
         } else if (tokens[1].startsWith(constants.YOUTUBE_PLAYLIST_PREFIX)) {
             let playlistId;
             try {
@@ -101,7 +108,7 @@ async function onPlay(message, server, spotifyToken) {
             const playlist = await ytpl(playlistId, { pages: 1 });
             server.queue = [...server.queue, ...utils.getURLsFromYTPlaylist(playlist)];
 
-            playQueue(connection);
+            playQueue(message, server);
         } else if (tokens[1].startsWith(constants.SPOTIFY_PLAYLIST_PREFIX)) {
             const tracks = await spotify.getTrackNamesFromSpotifyPlaylist(tokens[1], spotifyToken);
 
@@ -111,15 +118,15 @@ async function onPlay(message, server, spotifyToken) {
                 results.push(url);
             }
             console.log("results", results);
-            addToQueue(results);
-            playQueue(connection);
+            addToQueue(results, server);
+            playQueue(message, server);
         } else if (tokens.length > 1) {
             const queryStr = tokens.slice(1).join(" ");
 
             const result = await utils.getYTUrlFromQuery(queryStr);
 
-            addToQueue(result);
-            playQueue(connection);
+            addToQueue(result, server);
+            playQueue(message, server);
         } else {
             message.channel.send("FAIL: provide a full and correct YouTube URL");
         }
@@ -146,7 +153,7 @@ async function onVolume(message, server) {
 }
 
 async function onPause(message, server) {
-    if (!server.dispatcher.paused) {
+    if (server.dispatcher && !server.dispatcher.paused) {
         server.dispatcher.pause();
     } else {
         message.channel.send("FAIL: there's nothing playing");
@@ -154,9 +161,9 @@ async function onPause(message, server) {
 }
 
 async function onResume(message, server) {
-    message.channel.send("resuming");
-    if (server.dispatcher.paused) {
+    if (server.dispatcher && server.dispatcher.paused) {
         server.dispatcher.resume();
+        message.channel.send("resuming");
     } else {
         message.channel.send("FAIL: there's nothing playing");
     }
@@ -165,14 +172,22 @@ async function onResume(message, server) {
 async function onStop(message, server) {
     if (server.dispatcher) {
         server.dispatcher.destroy();
-        message.member.voice.channel.leave();
-        server.queue = [];
+        server.dispatcher = undefined;
     }
+    if (server.connection) {
+        message.member.voice.channel.leave();
+    }
+    server.queue = [];
 }
 
 async function onSkip(message, server) {
     if (server.dispatcher) {
         server.dispatcher.destroy();
+        server.dispatcher = undefined;
+        server.queue.shift();
+        playQueue(message, server);
+    } else {
+        message.channel.send("FAIL: there's nothing playing");
     }
 }
 
