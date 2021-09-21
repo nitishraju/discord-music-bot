@@ -54,11 +54,10 @@ async function findAndExecuteCommands(message, servers) {
 function addToQueue(item, server) {
     if (Array.isArray(item)) {
         server.queue = [...server.queue, ...item];
+        return;
     }
 
-    if (typeof item === "string") {
-        server.queue.push(item);
-    }
+    server.queue.push(item);
 }
 
 async function playQueue(message, server) {
@@ -67,14 +66,14 @@ async function playQueue(message, server) {
     }
 
     if (!server.dispatcher || server.dispatcher.paused) {
-        server.dispatcher = server.connection.play(ytdl(server.queue[0], {filter: "audioonly"}), {volume: 0.7})
+        server.dispatcher = server.connection.play(ytdl(server.queue[0].url, {filter: "audioonly"}), {volume: 0.7})
             .on("error", () => message.channel.send("Error playing song!"));
         
         server.dispatcher.on("finish", () => {
             server.queue.shift();
 
             if (server.queue[0]) {
-                setTimeout(() => playQueue(server.connection), 3000);
+                setTimeout(() => playQueue(message, server), 2 * 1000);
             }
         });  
     }
@@ -109,15 +108,25 @@ async function onPlay(message, server, spotifyToken) {
             server.queue = [...server.queue, ...utils.getURLsFromYTPlaylist(playlist)];
 
             playQueue(message, server);
-        } else if (tokens[1].startsWith(constants.SPOTIFY_PLAYLIST_PREFIX)) {
-            const tracks = await spotify.getTrackNamesFromSpotifyPlaylist(tokens[1], spotifyToken);
+        } else if (tokens[1].startsWith(constants.SPOTIFY_PLAYLIST_PREFIX)
+                || tokens[1].startsWith(constants.SPOTIFY_ALBUM_PREFIX)
+                || tokens[1].startsWith(constants.SPOTIFY_TRACK_PREFIX))
+        {
+            let type;
+            if (tokens[1].startsWith(constants.SPOTIFY_ALBUM_PREFIX)) {
+                type = "album";
+            } else if (tokens[1].startsWith(constants.SPOTIFY_PLAYLIST_PREFIX)) {
+                type = "playlist";
+            } else if (tokens[1].startsWith(constants.SPOTIFY_TRACK_PREFIX)) {
+                type = "track";
+            }
+            const tracks = await spotify.getTrackNamesFromSpotifyCollection(tokens[1], spotifyToken, type);
 
             const results = [];
             for await (let trackName of tracks) {
                 let url = await utils.getYTUrlFromQuery(trackName);
                 results.push(url);
             }
-            console.log("results", results);
             addToQueue(results, server);
             playQueue(message, server);
         } else if (tokens.length > 1) {
@@ -191,6 +200,6 @@ async function onSkip(message, server) {
     }
 }
 
-module.exports = { 
+module.exports = {
     findAndExecuteCommands,
 };

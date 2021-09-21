@@ -11,7 +11,6 @@ const servers = {};
 spotify.retrieveSpotifyToken(servers)
     .then(() => {
         console.log("Spotify token set.");
-        // spotify.getTrackNamesFromSpotifyPlaylist("https://open.spotify.com/playlist/7whao0mclC4HJl8FaeywyJ", servers.accessToken);
     });
 
 

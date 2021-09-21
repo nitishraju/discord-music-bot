@@ -20,6 +20,7 @@
     "eslint": "^7.32.0"
   },
   "scripts": {
-    "v": "node -v"
+    "v": "node -v",
+    "start": "node app.js"
   }
 }
