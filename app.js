@@ -1,11 +1,10 @@
 const Discord = require("discord.js");
 const client = new Discord.Client();
 
-const config = require("./config.json");
 const commands = require("./commands");
 const spotify = require("./spotifyService");
 
-client.login(config["discord_token"]);
+client.login(process.env.DISCORD_TOKEN);
 
 const servers = {};
 spotify.retrieveSpotifyToken(servers)
@@ -19,7 +18,7 @@ client.once("ready", () => {
 });
 
 client.on("message", async message => {
-    if (message.content.startsWith(config.prefix)) {
+    if (message.content.startsWith(process.env.PREFIX)) {
         commands.findAndExecuteCommands(message, servers);
     }
 });

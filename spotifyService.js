@@ -1,12 +1,7 @@
 const axios = require("axios");
 
-const { 
-    spotify_client_id: clientId,
-    spotify_client_secret: clientSecret,
-} = require("./config.json");
-
 const base64Creds = 
-    Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+    Buffer.from(`${process.env.SPOTIFY_CLIENT_ID}:${process.env.SPOTIFY_CLIENT_SECRET}`).toString("base64");
 
 function retrieveSpotifyToken(servers) {
     const axiosOptions = {

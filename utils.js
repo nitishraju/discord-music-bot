@@ -1,10 +1,8 @@
 // const { MessageEmbed } = require("discord.js");
 const ytsr = require("ytsr");
 
-const config = require("./config.json");
-
 function splitCommand(commandStr) {
-    return commandStr.slice(config.prefix.length).split(" ");
+    return commandStr.slice(process.env.PREFIX.length).split(" ");
 }
 
 // function getEmbedFromVideo(title, url) {
